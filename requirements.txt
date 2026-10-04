@@ -6,3 +6,4 @@ ollama
 python-dotenv
 pytest
 rasterio
+matplotlib
