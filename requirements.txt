@@ -5,3 +5,4 @@ numpy
 ollama
 python-dotenv
 pytest
+rasterio
