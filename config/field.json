@@ -1,10 +1,9 @@
 {
   "farmer_name": "Ramesh",
   "language": "Hindi",
-  "crop": "wheat",
-  "sowing_date": "2026-11-15",
-  "last_irrigation_date": "2026-11-20",
-  "latitude": 29.373,
-  "longitude": 77.772,
-  "polygon": null
+  "crop": "sugarcane",
+  "sowing_date": "2026-04-15",
+  "last_irrigation_date": null,
+  "latitude": 29.3733,
+  "longitude": 77.7721
 }

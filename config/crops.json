@@ -1,0 +1,55 @@
+{
+  "wheat": {
+    "verified": false,
+    "source": "FAO-56 typical values (Kc ini 0.3, mid 1.15, end 0.25; p 0.55). Stage lengths and root depth are typical guesses. PLACEHOLDER: confirm with your state agricultural university / KVK before real use.",
+    "stages_days": {
+      "initial": 20,
+      "development": 40,
+      "mid": 40,
+      "late": 30
+    },
+    "kc": {
+      "ini": 0.3,
+      "mid": 1.15,
+      "end": 0.25
+    },
+    "root_depth_m": {
+      "min": 0.3,
+      "max": 1.0
+    },
+    "depletion_fraction_p": 0.55,
+    "critical_stages": [
+      "crown root initiation",
+      "tillering",
+      "jointing",
+      "flowering",
+      "grain filling"
+    ]
+  },
+  "sugarcane": {
+    "verified": false,
+    "source": "FAO crop information (Kc mid 1.25, p 0.65) and FAO-56 (Kc ini 0.4, Kc end ~0.75). Stage lengths and root depth are typical guesses for spring-planted plant cane in north India (~12 months). PLACEHOLDER: confirm with UP Cane Research Council / local KVK.",
+    "stages_days": {
+      "initial": 45,
+      "development": 90,
+      "mid": 150,
+      "late": 75
+    },
+    "kc": {
+      "ini": 0.4,
+      "mid": 1.25,
+      "end": 0.75
+    },
+    "root_depth_m": {
+      "min": 0.3,
+      "max": 1.2
+    },
+    "depletion_fraction_p": 0.65,
+    "critical_stages": [
+      "germination",
+      "tillering",
+      "grand growth",
+      "maturity (water stress is tolerated)"
+    ]
+  }
+}
