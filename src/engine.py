@@ -41,6 +41,9 @@ SOON_DAYS = 2
 SAT_MAX_AGE_DAYS = 10
 SAT_MAX_GAP_DAYS = 15
 NDMI_DROP = -0.05  # heuristic: not calibrated yet, tune with the farmer's logs
+RAIN_WORTH_NOTING_MM = 10.0  # forecast rain big enough to mention next to an irrigation
+NEARLY_FULL_PCT = 80  # root zone this full: more water now is wasted
+MAX_RECHECK_DAYS = 7
 
 
 def load_crop(name: str, path: Path = CROPS_PATH) -> dict:
@@ -148,6 +151,40 @@ def irrigation_depth_mm(dr_mm: float, taw_mm: float, efficiency: float = IRRIGAT
     }
 
 
+def pump_hours(gross_mm: float, area_m2: float | None, flow_lps: float | None) -> float | None:
+    """Hours of pumping to put `gross_mm` on `area_m2` with a pump giving `flow_lps` litres per second."""
+    if not area_m2 or not flow_lps or flow_lps <= 0:
+        return None
+    volume_l = gross_mm * area_m2  # 1 mm over 1 m2 is 1 litre
+    return round(volume_l / flow_lps / 3600, 1)
+
+
+def farmer_actions(action: str, depth: dict, days: int | None, rain_next_5d_mm: float,
+                   water_pct: int, irrigation_known: bool, crop: dict) -> list[dict]:
+    """What the farmer can do, as fixed codes plus numbers. src/explain.py turns them into words.
+
+    Deterministic on purpose: the LLM may rephrase these, never invent new ones.
+    """
+    out: list[dict] = []
+    irrigate = action in ("irrigate_now", "irrigate_soon")
+    if irrigate and depth.get("needed"):
+        out.append({"code": "apply_depth", "gross_mm": depth["gross_mm"], "pump_hours": depth.get("pump_hours")})
+        out.append({"code": "irrigate_cool_hours"})
+        if rain_next_5d_mm >= RAIN_WORTH_NOTING_MM:
+            out.append({"code": "rain_forecast_counted", "rain_mm": round(rain_next_5d_mm)})
+    if action == "watch":
+        out.append({"code": "hand_check"})
+    if action == "wait":
+        if water_pct >= NEARLY_FULL_PCT:
+            out.append({"code": "soil_nearly_full", "water_pct": water_pct})
+        recheck = MAX_RECHECK_DAYS if days is None else max(1, min(days - SOON_DAYS, MAX_RECHECK_DAYS))
+        out.append({"code": "recheck_in", "days": recheck})
+    if action in ("irrigate_now", "irrigate_soon", "watch", "wait"):
+        out.extend({"code": tip} for tip in crop.get("water_saving_tips", []))
+    if not irrigation_known:
+        out.append({"code": "log_irrigation"})
+    return out
+
 
 def extend_weather(df: pd.DataFrame, days: int = MAX_EXTEND_DAYS) -> pd.DataFrame:
     """Append days after the forecast: no rain, ET0 = average of the last 7 observed days.
@@ -192,11 +229,13 @@ def _dr_on(sim: pd.DataFrame, day: pd.Timestamp):
 
 def decide(weather: pd.DataFrame, crop_name: str, sowing, last_irrigation=None, soil: str | None = None,
            satellite: dict | None = None, today=None, irrigations: dict | None = None,
-           crops_path: Path = CROPS_PATH, soil_params: dict | None = None) -> dict:
+           crops_path: Path = CROPS_PATH, soil_params: dict | None = None,
+           field_area_m2: float | None = None, pump_flow_lps: float | None = None) -> dict:
     """Structured irrigation advice for today. `weather` comes from weather.fetch_weather().
 
     `soil_params` (from src/soil.py) overrides the texture-class guess with this field's
-    own theta_fc / theta_wp / TAW.
+    own theta_fc / theta_wp / TAW. With `field_area_m2` and `pump_flow_lps` the depth is
+    also given as water volume (m3) and hours of pumping.
     """
     crop = load_crop(crop_name, crops_path)
     today = pd.Timestamp(today if today is not None else pd.Timestamp.today()).normalize()
@@ -258,6 +297,9 @@ def decide(weather: pd.DataFrame, crop_name: str, sowing, last_irrigation=None, 
     root_zone_m = root_depth_m(das_today, crop)
     theta_now = soil_moisture_m3m3(dr_today, root_zone_m, soil_w["theta_fc_m3m3"], soil_w["theta_wp_m3m3"])
     depth = irrigation_depth_mm(dr_today, taw_today)
+    if field_area_m2:
+        depth["water_m3"] = round(depth["gross_mm"] * field_area_m2 / 1000, 1)
+    depth["pump_hours"] = pump_hours(depth["gross_mm"], field_area_m2, pump_flow_lps) if depth["needed"] else None
 
 
     # When does depletion reach the stress point?
@@ -311,6 +353,8 @@ def decide(weather: pd.DataFrame, crop_name: str, sowing, last_irrigation=None, 
         notes.append("no usable satellite view")
 
     confidence = "low" if truncated or len(notes) >= 3 else "medium" if notes else "high"
+    water_pct = water_available_pct(dr_today, taw_today)
+    actions = farmer_actions(action, depth, days, rain_next, water_pct, last_irr is not None, crop)
     return {
         **base, "action": action, "stage": p_today["stage"], "days_after_sowing": int(das_today),
         "depletion_mm": round(dr_today, 1), "allowed_depletion_mm": round(raw_today, 1),
@@ -322,9 +366,9 @@ def decide(weather: pd.DataFrame, crop_name: str, sowing, last_irrigation=None, 
         "root_depth_m": round(root_zone_m, 2),
         "soil_moisture_m3m3": round(theta_now, 3),
         "field_capacity_m3m3": soil_w["theta_fc_m3m3"], "wilting_point_m3m3": soil_w["theta_wp_m3m3"],
-        "water_available_pct": water_available_pct(dr_today, taw_today),
+        "water_available_pct": water_pct,
         "irrigation_depth_mm": depth,
-        "satellite_age_days": sat_age, "reasons": reasons,
+        "satellite_age_days": sat_age, "reasons": reasons, "actions": actions,
         "confidence": confidence, "confidence_notes": notes,
     }
 

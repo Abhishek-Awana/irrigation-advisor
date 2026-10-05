@@ -42,3 +42,14 @@ def test_mostly_cloudy_scene_is_unusable():
     data, inside = make(n_cloud=14)
     r = indices.field_indices(data, inside, META)
     assert not r["usable"]
+
+def test_pixel_indices_marks_cloud_unclear():
+    import numpy as np
+
+    from src.indices import pixel_indices
+    data = {"B04": np.array([[1500, 1500]]), "B08": np.array([[4000, 4000]]),
+            "B11": np.array([[2500, 2500]]), "SCL": np.array([[4, 9]])}
+    meta = {b: (1e-4, -0.1) for b in ("B04", "B08", "B11")}
+    px = pixel_indices(data, meta)
+    assert px["clear"].tolist() == [[True, False]]
+    assert px["ndvi"][0, 0] > 0.5

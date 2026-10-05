@@ -11,11 +11,14 @@ from pathlib import Path
 import pandas as pd
 import planetary_computer
 from pystac_client import Client
+from rasterio.warp import transform_geom
 from shapely.geometry import box, mapping, shape
 
 STAC_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 HALF_SIDE_DEG = 0.0005  # ~55 m: fallback square when no polygon is drawn
 COLUMNS = ["date", "id", "cloud_pct", "tile"]
+S2 = "sentinel-2-l2a"
+LANDSAT = "landsat-c2-l2"  # Landsat 8/9 Collection 2 Level-2: has surface temperature
 
 
 def load_field_geometry(
@@ -36,8 +39,20 @@ def load_field_geometry(
     return box(lon - HALF_SIDE_DEG, lat - HALF_SIDE_DEG, lon + HALF_SIDE_DEG, lat + HALF_SIDE_DEG)
 
 
-def find_scenes(geom, days: int = 90, max_cloud_pct: float = 60.0) -> pd.DataFrame:
-    """List Sentinel-2 L2A scenes over `geom` in the last `days`.
+def utm_epsg(lon: float, lat: float) -> int:
+    """EPSG code of the UTM zone holding this point (metres, for areas)."""
+    zone = int((lon + 180) // 6) + 1
+    return (32600 if lat >= 0 else 32700) + zone
+
+
+def field_area_m2(geom) -> float:
+    """Area of the field polygon in square metres."""
+    c = geom.centroid
+    return float(shape(transform_geom("EPSG:4326", f"EPSG:{utm_epsg(c.x, c.y)}", mapping(geom))).area)
+
+
+def find_scenes(geom, days: int = 90, max_cloud_pct: float = 60.0, collection: str = S2) -> pd.DataFrame:
+    """List scenes of `collection` (Sentinel-2 L2A by default) over `geom` in the last `days`.
 
     cloud_pct is for the WHOLE scene. Cloud over the field itself is checked in step 3C.
     """
@@ -45,7 +60,7 @@ def find_scenes(geom, days: int = 90, max_cloud_pct: float = 60.0) -> pd.DataFra
     start = end - timedelta(days=days)
     catalog = Client.open(STAC_URL, modifier=planetary_computer.sign_inplace)
     search = catalog.search(
-        collections=["sentinel-2-l2a"],
+        collections=[collection],
         intersects=mapping(geom),
         datetime=f"{start}/{end}",
         query={"eo:cloud_cover": {"lt": max_cloud_pct}},

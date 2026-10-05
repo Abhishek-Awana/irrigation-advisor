@@ -36,17 +36,25 @@ def norm_diff(a: np.ndarray, b: np.ndarray) -> np.ndarray:
         return np.where(s > 0, (a - b) / s, np.nan)
 
 
+def pixel_indices(data: dict, meta: dict) -> dict:
+    """Per-pixel NDVI and NDMI, and which pixels are a clear view of land (not cloud/shadow/water)."""
+    red = to_reflectance(data["B04"], *meta["B04"][:2])
+    nir = to_reflectance(data["B08"], *meta["B08"][:2])
+    swir = to_reflectance(data["B11"], *meta["B11"][:2])
+    ndvi, ndmi = norm_diff(nir, red), norm_diff(nir, swir)
+    clear = np.isin(data["SCL"], GOOD_SCL) & np.isfinite(ndvi) & np.isfinite(ndmi)
+    return {"ndvi": ndvi, "ndmi": ndmi, "clear": clear}
+
+
 def field_indices(data: dict, inside: np.ndarray, meta: dict) -> dict:
     """Mean NDVI/NDMI over clear pixels inside the field.
 
     data: {"B04","B08","B11","SCL"} arrays from bands.read_field_bands
     meta: {"B04": (scale, offset, ...), ...}
     """
-    red = to_reflectance(data["B04"], *meta["B04"][:2])
-    nir = to_reflectance(data["B08"], *meta["B08"][:2])
-    swir = to_reflectance(data["B11"], *meta["B11"][:2])
-    ndvi, ndmi = norm_diff(nir, red), norm_diff(nir, swir)
-    clear = inside & np.isin(data["SCL"], GOOD_SCL) & np.isfinite(ndvi) & np.isfinite(ndmi)
+    px = pixel_indices(data, meta)
+    ndvi, ndmi = px["ndvi"], px["ndmi"]
+    clear = inside & px["clear"]
     n_field, n_clear = int(inside.sum()), int(clear.sum())
     frac = n_clear / n_field if n_field else 0.0
     return {

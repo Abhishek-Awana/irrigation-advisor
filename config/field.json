@@ -5,5 +5,7 @@
   "sowing_date": "2026-04-15",
   "last_irrigation_date": null,
   "latitude": 29.3733,
-  "longitude": 77.7721
+  "longitude": 77.7721,
+  "pump_flow_lps": 4.5,
+  "llm_model": "gemma3:4b"
 }

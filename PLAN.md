@@ -45,14 +45,36 @@ Metrics: anomaly correlation, anomaly RMSE, level bias, wet/dry event hit rate.
 Writes `data/validation.json` + `data/validation.png`.
 Done when: the report runs end to end and gives a pass/fail against the thresholds.
 
-## Step 7 - LLM explainer (never the decider)
-`src/explain.py`: Ollama model turns the engine's numbers into plain Hindi + English.
+## Step 7 - LLM explainer (never the decider)  [DONE]
+`src/explain.py`: headline (action + mm + pump hours) and action list are fixed templates in
+Hindi + English; a local Ollama model (`llm_model` in field.json, default gemma3:4b) writes only
+the "why" paragraph. It is rejected if it uses a number the engine did not give, contradicts the
+action, or is in the wrong script -> template paragraph instead (also the offline path).
+Engine side: `engine.farmer_actions()` codes (apply depth, cool hours, hand check, mulch,
+alternate furrow, log irrigation...) and `engine.pump_hours()` from field area + pump flow.
 Done when: the text states the same action and mm depth as `decide()`, and works offline.
 
-## Step 8 - farmer UI
-`app.py`: Streamlit page - crop/soil, today's advice, mm to apply, satellite plot,
-validation tab.
+## Step 8 - farmer UI  [DONE]
+`app.py`: Hindi/English; tabs Today (advice, mm, pump hours, actions), Field maps, Irrigation log,
+Satellite trend, Validation, Details. `src/pipeline.py` runs the whole flow; each data source can
+fail without stopping the advice. `src/irrigation_log.py` keeps data/irrigation_log.csv.
 Done when: `streamlit run app.py` shows the advice without errors.
+
+## Step 9 - field maps, field vs neighbours  [DONE]
+`src/maps.py` (IrriWatch-style idea, NASA Spinoff "Farmers Get Tools from Space", free data only):
+Sentinel-2 NDVI, NDMI, NDMI change between two clear dates, crop water use = Kc(NDVI) x ET0;
+Landsat 8/9 surface temperature minus the median of nearby crops. Each map: field outline,
+~300 m (thermal ~1 km) of neighbours, field-vs-nearby numbers, PNG + web-map overlay.
+Limits: Landsat thermal is ~100 m native, larger than this field -> neighbourhood comparison only.
+Maps inform; they do not change `decide()`.
+
+## Next
+- Dry-season validation run (Nov-Mar) and a hand-feel / probe check in the field.
+- Confirm sugarcane Kc, stages and root depth with UPCSR / KVK, then set `verified: true`.
+- Sentinel-1 radar (`sentinel-1-rtc`, no key) for surface soil moisture through monsoon cloud.
+- Use Kc from NDVI in the engine (today only in the water-use map) once checked against the log.
+- Delivery to phones: WhatsApp / SMS / voice in Hindi.
+
 ## Validation notes - first live run (2026-07-06 to 2026-10-04, Muzaffarnagar field)
 - 0-7 cm: PASS - anomaly r 0.72, wet hit 0.68, dry hit 1.00.
 - 7-28 cm: FAIL - anomaly r 0.40, wet hit 0.53, dry hit 0.92. The bucket is capped at field

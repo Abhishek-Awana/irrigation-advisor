@@ -18,7 +18,7 @@ from rasterio.warp import transform_geom
 from rasterio.windows import from_bounds
 from shapely.geometry import mapping, shape
 
-from src.satellite import STAC_URL, find_scenes, load_field_geometry
+from src.satellite import S2, STAC_URL, find_scenes, load_field_geometry
 
 BANDS = ("B04", "B08", "B11", "SCL")
 BUFFER_M = 10  # read a little around the field so tiny polygons still cover >=1 pixel
@@ -30,10 +30,10 @@ SCL_NAMES = {
 GDAL_OPTS = {"GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR", "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif"}
 
 
-def get_item(scene_id: str):
+def get_item(scene_id: str, collection: str = S2):
     """Fetch one signed STAC item by id."""
     catalog = Client.open(STAC_URL, modifier=planetary_computer.sign_inplace)
-    search = catalog.search(collections=["sentinel-2-l2a"], ids=[scene_id])
+    search = catalog.search(collections=[collection], ids=[scene_id])
     return next(search.items())
 
 
@@ -42,11 +42,21 @@ def read_field_bands(item, geom, bands=BANDS):
 
     inside_mask is True for pixels touched by the field polygon.
     """
+    grid = read_area(item, geom, bands, BUFFER_M)
+    return grid["data"], grid["inside"]
+
+
+def read_area(item, geom, bands=BANDS, buffer_m: float = BUFFER_M) -> dict:
+    """Bands on one grid covering the field plus `buffer_m` around it (for maps of the neighbourhood).
+
+    Returns {"data": {band: 2D array}, "inside": mask, "transform", "crs", "field": field polygon in crs}.
+    Works for any STAC item whose assets are rasters (Sentinel-2, Landsat).
+    """
     with rasterio.Env(**GDAL_OPTS):
         with rasterio.open(item.assets[bands[0]].href) as src:
             crs = src.crs
             g = shape(transform_geom("EPSG:4326", crs, mapping(geom)))
-            win = from_bounds(*g.buffer(BUFFER_M).bounds, transform=src.transform)
+            win = from_bounds(*g.buffer(buffer_m).bounds, transform=src.transform)
             win = win.round_offsets().round_lengths()
             transform = src.window_transform(win)
             width, height = int(win.width), int(win.height)
@@ -63,7 +73,7 @@ def read_field_bands(item, geom, bands=BANDS):
     inside = geometry_mask(
         [mapping(g)], out_shape=(height, width), transform=transform, invert=True, all_touched=True
     )
-    return data, inside
+    return {"data": data, "inside": inside, "transform": transform, "crs": crs, "field": g}
 
 
 if __name__ == "__main__":

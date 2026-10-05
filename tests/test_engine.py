@@ -210,3 +210,39 @@ def test_waiting_advice_still_says_what_a_refill_would_take(crops_file):
 
 def test_soil_bottom_cm_follows_max_root_depth():
     assert engine.soil_bottom_cm({"root_depth_m": {"min": 0.3, "max": 1.2}}) == 120
+
+
+def test_pump_hours_from_depth_area_and_flow():
+    # 84 mm on 1 hectare = 840 m3; at 10 L/s that is 84,000 s = 23.3 h
+    assert engine.pump_hours(84.0, 10_000, 10.0) == pytest.approx(23.3)
+    assert engine.pump_hours(84.0, None, 10.0) is None
+    assert engine.pump_hours(84.0, 10_000, 0) is None
+
+
+def test_decide_gives_volume_and_pump_hours_when_field_is_known(crops_file):
+    r = engine.decide(weather(), "wheat", SOWING, TODAY - pd.Timedelta(days=16), soil="loam",
+                      today=TODAY, crops_path=crops_file, field_area_m2=10_000, pump_flow_lps=10.0)
+    d = r["irrigation_depth_mm"]
+    assert d["water_m3"] == pytest.approx(d["gross_mm"] * 10, abs=0.1)
+    assert d["pump_hours"] == engine.pump_hours(d["gross_mm"], 10_000, 10.0)
+    assert r["actions"][0] == {"code": "apply_depth", "gross_mm": d["gross_mm"], "pump_hours": d["pump_hours"]}
+
+
+def test_actions_for_waiting_and_unknown_irrigation():
+    crop = {"water_saving_tips": ["trash_mulch"]}
+    depth = {"needed": False, "gross_mm": 0.0}
+    acts = engine.farmer_actions("wait", depth, 12, 0.0, 90, irrigation_known=False, crop=crop)
+    codes = [a["code"] for a in acts]
+    assert codes == ["soil_nearly_full", "recheck_in", "trash_mulch", "log_irrigation"]
+    assert acts[1]["days"] == 7  # never more than a week between checks
+
+
+def test_actions_when_irrigating_with_rain_forecast():
+    depth = {"needed": True, "gross_mm": 80.0, "pump_hours": 5.0}
+    acts = engine.farmer_actions("irrigate_now", depth, 0, 15.0, 30, irrigation_known=True, crop={})
+    assert [a["code"] for a in acts] == ["apply_depth", "irrigate_cool_hours", "rain_forecast_counted"]
+
+
+def test_watch_asks_for_a_hand_check():
+    acts = engine.farmer_actions("watch", {"needed": False}, 8, 0.0, 50, True, {})
+    assert acts == [{"code": "hand_check"}]

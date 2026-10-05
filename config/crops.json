@@ -24,6 +24,9 @@
       "jointing",
       "flowering",
       "grain filling"
+    ],
+    "water_saving_tips": [
+      "avoid_waterlogging"
     ]
   },
   "sugarcane": {
@@ -50,6 +53,10 @@
       "tillering",
       "grand growth",
       "maturity (water stress is tolerated)"
+    ],
+    "water_saving_tips": [
+      "trash_mulch",
+      "alternate_furrow"
     ]
   }
 }
